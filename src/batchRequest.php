@@ -1,4 +1,5 @@
 <?php
+
 namespace qiLim\batchRequest;
 
 /**
@@ -13,22 +14,26 @@ namespace qiLim\batchRequest;
  */
 class batchRequest
 {
+    //curl批量句柄
+    private $mh;
+    //curl句柄
+    private $conn;
+
     //请求数据
     public $data = [];
     //请求结果
     public $result = [];
-    //curl批量句柄
-    public $mh;
-    //curl句柄
-    private $conn;
     //默认请求方法
     public $defaultMethod = "GET";
     //超时时间 单位:秒
     public $timeout = 8;
 
+    public $needRecordLog = true;
+
     public $logPath;
 
-    public $needRecordLog=true;
+    //获取结果类型
+    public $resultType = 'body';
 
     final private function closeHandle()
     {
@@ -73,7 +78,7 @@ class batchRequest
         curl_setopt($this->conn[$i], CURLOPT_TIMEOUT, $this->timeout);
         curl_setopt($this->conn[$i], CURLOPT_HEADER, CURLOPT_HEADER);
         //设置请求header
-        if (!empty($item['header']) ) {
+        if (!empty($item['header'])) {
             curl_setopt($this->conn[$i], CURLOPT_HTTPHEADER, $item['header']);
         }
         switch (strtoupper($item['method'])) {
@@ -157,7 +162,7 @@ class batchRequest
             }
             if (strstr($item, ':') !== false) {
                 list($key, $value) = explode(': ', $item);
-                $header[$key] = str_replace(["\n","\r"],['',''],$value);
+                $header[$key] = str_replace(["\n", "\r"], ['', ''], $value);
             }
         }
         return $header;
@@ -174,10 +179,14 @@ class batchRequest
         if (!empty($option['timeout'])) {
             $this->data = $option['timeout'];
         }
-        if (!empty($option['needRecordLog'])) {
+        if (isset($option['needRecordLog'])&&is_bool($option['needRecordLog'])) {
             $this->needRecordLog = $option['needRecordLog'];
         }
-        $this->logPath = (!empty($option['logPath']))?$option['logPath']:dirname(__DIR__).DIRECTORY_SEPARATOR."logs/".date("Y-m-d").".log";
+
+        if (!empty($option['resultType'])) {
+            $this->resultType = $option['resultType'];
+        }
+        $this->logPath = (!empty($option['logPath'])) ? $option['logPath'] : dirname(__DIR__) . DIRECTORY_SEPARATOR . "logs/" . date("Y-m-d") . ".log";
         $this->mh = curl_multi_init();
     }
 
@@ -197,69 +206,52 @@ class batchRequest
         return $this->result;
     }
 
-
     public function __call($name, $arguments)
     {
         $tmp = explode('getResultBy', $name);
         if (count($tmp) == 2) {
             $result = [];
             foreach ($this->result as $k => $item) {
-                $result[$k] = isset($item[lcfirst($tmp[1])])?$item[lcfirst($tmp[1])]:null;
+                $result[$k] = isset($item[lcfirst($tmp[1])]) ? $item[lcfirst($tmp[1])] : null;
             }
             return $result;
         }
     }
 
-    /**
-     * @return $this
-     */
-    public function run()
+    public function get()
     {
         if (empty($this->data)) {
             return $this->closeHandle();
         }
-        $this->writeLog($this->data);
+        $actionName = ($this->resultType == "result") ? 'getResult' : 'getResultBy' . ucfirst($this->resultType);
+        $this->writeLog($this->data,"START");
         $this->createConn();
         $this->execHandle();
         $this->closeHandle();
-        $this->writeLog($this->getResultByBody());
-        return $this;
+        $this->writeLog($this->getResultByBody(),'END');
+        return $this->$actionName();
     }
 
-    /**
-     * @param $data
-     * @param int $maximum
-     * @return array
-     */
-    public static function batchRun($data=[], $maximum = 100,$action="Body")
+
+    public function getLogPath()
     {
-        $result = [];
-        foreach (array_chunk($data, $maximum, true) as $k => $chunk_data) {
-            $actionName= ($action=="result")?'getResult':'getResultBy'.ucfirst($action);
-            $chunk_result = (new self())->setData($chunk_data)->run()->$actionName();
-            $result = array_merge($result, $chunk_result);
-            sleep(1);
-        }
-        return $result;
-    }
-
-    public function getLogPath(){
         return $this->logPath;
     }
 
-    private function writeLog($msg){
-        if(!$this->needRecordLog){
+    private function writeLog($msg,$action="default")
+    {
+        if (!$this->needRecordLog) {
             return false;
         }
-        if(!is_dir(dirname($this->logPath))){
-            mkdir(dirname($this->logPath),0777,true);
+        if (!is_dir(dirname($this->logPath))) {
+            mkdir(dirname($this->logPath), 0777, true);
         }
-        if($msg){
-            if(!$msgS=json_encode($msg,JSON_UNESCAPED_UNICODE)){
-                $msgS="json解析错误，code:".json_last_error()."msg:".json_last_error_msg();
+        if ($msg) {
+            if (!$msgS = json_encode($msg, JSON_UNESCAPED_UNICODE)) {
+                $msgS = "json解析错误，code:" . json_last_error() . "msg:" . json_last_error_msg();
             };
-            $msg= "[".date("Y-m-d H:i:s")."】：$msgS".PHP_EOL;
-            file_put_contents($this->logPath,$msg,FILE_APPEND);
+            $msg = "[" . date("Y-m-d H:i:s") . "] :[{$action}]: $msgS" . PHP_EOL;
+            file_put_contents($this->logPath, $msg, FILE_APPEND);
         }
     }
 }

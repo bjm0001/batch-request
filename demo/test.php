@@ -4,13 +4,20 @@ use qiLim\batchRequest\batchRequest;
 include dirname(__DIR__).DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR.'autoload.php';
 
 
-$Request = new batchRequest();
 $data=[
     'dd'=> [
         'url'=>'http://tianqi.2345.com/tpc/searchCity.php?q=%E6%88%90%E9%83%BD&pType=pc',
         'method'=>'GET',
         'data'=>[
-            'q'=>"成都",
+            'q'=>"上海",
+            'pType'=>"pc",
+        ]
+    ],
+    'dd2'=> [
+        'url'=>'http://tianqi.2345.com/tpc/searchCity.php?q=%E6%88%90%E9%83%BD&pType=pc',
+        'method'=>'GET',
+        'data'=>[
+            'q'=>"上海",
             'pType'=>"pc",
         ]
     ],
@@ -20,6 +27,34 @@ $data=[
     ]
 ];
 
-$result=BatchRequest::batchRun($data,1,'header');
-//$result=  $Request->setData($data)->run()->getResultByBody();
+$config= [
+    'data'=>$data,
+    'resultType'=>"body",
+    'needRecordLog'=>false,
+];
+$Request = new batchRequest($config);
+$result=  $Request->get();
 var_dump($result);
+
+die;
+
+$config= [
+    'data'=>$data,
+    'resultType'=>"body",
+    'needRecordLog'=>false,
+];
+echo "开始时间:".date("Y-m-d H:i:s").PHP_EOL;
+//单次请求最大阀值
+$maximum=3;
+//单次请求间隔(单位：秒)
+$requestInterval=1;
+$result=[];
+foreach (array_chunk($data, $maximum, true) as $k => $chunk_data) {
+    $config['data']=$chunk_data;
+    $config['resultType']='body';
+    $chunk_result = (new batchRequest($config))->get();
+    $result = array_merge($result, $chunk_result);
+    sleep($requestInterval);
+}
+print_r($result);
+echo "结束时间:".date("Y-m-d H:i:s").PHP_EOL;
