@@ -1,18 +1,18 @@
 {
-    "name": "qilin01/batch-request",
+    "name": "qilin/batch-request",
     "type": "library",
     "license": "MIT",
     "description": "",
     "authors": [
         {
-            "name": "qilin01",
+            "name": "qiLin",
             "email": "2571714169@qq.com"
         }
     ],
     "require": {},
     "autoload": {
         "psr-4": {
-            "qilin01\\batchRequest\\": "src/"
+            "qiLin\\batchRequest\\": "src/"
         }
     }
 }

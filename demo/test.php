@@ -1,6 +1,7 @@
 <?php
 
-use qiLim\batchRequest\batchRequest;
+use qiLin\batchRequest\batchRequest;
+
 include dirname(__DIR__).DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR.'autoload.php';
 
 
@@ -30,7 +31,6 @@ $data=[
 $config= [
     'data'=>$data,
     'resultType'=>"body",
-    'needRecordLog'=>false,
 ];
 $Request = new batchRequest($config);
 $result=  $Request->get();

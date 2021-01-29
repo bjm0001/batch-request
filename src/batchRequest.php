@@ -1,6 +1,6 @@
 <?php
 
-namespace qiLim\batchRequest;
+namespace qiLin\batchRequest;
 
 /**
  *
@@ -35,11 +35,6 @@ class batchRequest
     //获取结果类型
     public $resultType = 'body';
 
-    final private function closeHandle()
-    {
-        curl_multi_close($this->mh);
-        return $this;
-    }
 
     final private function checkItem(&$item)
     {
@@ -127,6 +122,7 @@ class batchRequest
                 } while ($mrc == CURLM_CALL_MULTI_PERFORM);
             }
         }
+        $this->result=[];
         foreach ($this->data as $i => $item) {
             //获取当前解析的cURL的相关传输信息
             $this->result[$i]['multiInfo'] = curl_multi_info_read($this->mh);
@@ -187,7 +183,7 @@ class batchRequest
             $this->resultType = $option['resultType'];
         }
         $this->logPath = (!empty($option['logPath'])) ? $option['logPath'] : dirname(__DIR__) . DIRECTORY_SEPARATOR . "logs/" . date("Y-m-d") . ".log";
-        $this->mh = curl_multi_init();
+
     }
 
     public function allowMethod()
@@ -221,13 +217,14 @@ class batchRequest
     public function get()
     {
         if (empty($this->data)) {
-            return $this->closeHandle();
+            return $this;
         }
+        $this->mh = curl_multi_init();
         $actionName = ($this->resultType == "result") ? 'getResult' : 'getResultBy' . ucfirst($this->resultType);
         $this->writeLog($this->data,"START");
         $this->createConn();
         $this->execHandle();
-        $this->closeHandle();
+        curl_multi_close($this->mh);
         $this->writeLog($this->getResultByBody(),'END');
         return $this->$actionName();
     }
