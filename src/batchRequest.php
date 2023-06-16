@@ -1,154 +1,54 @@
 <?php
 
-namespace qiLin\batchRequest;
+namespace Bjm\batchRequest;
 
-/**
- *
- * @method  getResultByMultiInfo
- * @method  getResultByCurlInfo
- * @method  getResultByHeaderString
- * @method  getResultByHeaderArray
- * @method  getResultByBody
- *
- * Class BatchRequest
- */
 class batchRequest
 {
-    //curl批量句柄
-    private $mh;
-    //curl句柄
-    private $conn;
+    public $request_data = [];
 
-    //请求数据
-    public $data = [];
-    //请求结果
-    public $result = [];
-    //默认请求方法
-    public $defaultMethod = "GET";
-    //超时时间 单位:秒
-    public $timeout = 8;
+    public $log_path = '/tmp/batch_request.log';
 
-    public $needRecordLog = true;
+    public $need_record_log = false;
 
-    public $logPath;
-
-    //获取结果类型
-    public $resultType = 'body';
-
-
-    final private function checkItem(&$item)
+    public function __construct($option = [])
     {
-        if (empty($item['method'])) {
-            $item['method'] = $this->defaultMethod;
+        if (isset($option['log_path']) && is_string($option['log_path'])) {
+            $this->log_path = $option['log_path'];
         }
-        if (empty($item['data'])) {
-            $item['data'] = [];
-        }
-    }
-
-    final private function createConn()
-    {
-        foreach ($this->data as $i => $item) {
-            if (empty($item['url'])) {
-                continue;
-            }
-            $this->conn[$i] = curl_init();
-            if (empty($item['method'])) {
-                $item['method'] = "GET";
-            }
-            $this->checkItem($item);
-            $this->setOpts($i, $item);
-            curl_multi_add_handle($this->mh, $this->conn[$i]);
-        }
-        return $this;
-    }
-
-    final private function setOpts($i, $item)
-    {
-        curl_setopt($this->conn[$i], CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($this->conn[$i], CURLOPT_SSL_VERIFYHOST, false);
-        //将curl_exec()获取的信息以文件流的形式返回，而不是直接输出
-        curl_setopt($this->conn[$i], CURLOPT_RETURNTRANSFER, true);
-        //设置cURL允许执行的最长秒数
-        curl_setopt($this->conn[$i], CURLOPT_TIMEOUT, $this->timeout);
-        curl_setopt($this->conn[$i], CURLOPT_HEADER, CURLOPT_HEADER);
-        //设置请求header
-        if (!empty($item['header'])) {
-            curl_setopt($this->conn[$i], CURLOPT_HTTPHEADER, $item['header']);
-        }
-        switch (strtoupper($item['method'])) {
-            case "GET":
-                if (is_array($item['data'])) {
-                    $data_str = '';
-                    if (count($item['data']) !== 0) {
-                        foreach ($item['data'] as $k => $v) {
-                            $data_str .= '&' . $k . '=' . urlencode($v);
-                        }
-                        $data_str = substr($data_str, 1);
+        if (isset($option['data']) && is_array($option['data'])) {
+            foreach ($option['data'] as $key => $item) {
+                if (is_array($item)) {
+                    $config = Config::getInstance($item);
+                    if ($config) {
+                        $this->request_data[$key] = $config;
+                        continue;
                     }
-                } else {
-                    $data_str = &$item['data'];
                 }
-                $url = $item['url'] . ($data_str === '' ? '' : '?' . $data_str);
-                curl_setopt($this->conn[$i], CURLOPT_URL, $url);
-                break;
-            case "POST":
-                curl_setopt($this->conn[$i], CURLOPT_URL, $item['url']);
-                curl_setopt($this->conn[$i], CURLOPT_POST, true);
-                curl_setopt($this->conn[$i], CURLOPT_POSTFIELDS, $item['data']);
-                break;
-            case "PUT":
-            case "DELETE":
-                curl_setopt($this->conn[$i], CURLOPT_URL, $item['url']);
-                curl_setopt($this->conn[$i], CURLOPT_CUSTOMREQUEST, strtoupper($item['method']));
-                curl_setopt($this->conn[$i], CURLOPT_POSTFIELDS, $item['data']);
-                break;
-        }
-        return $this;
-
-    }
-
-    final private function execHandle()
-    {
-        $active = null;
-        do {
-            $mrc = curl_multi_exec($this->mh, $active);
-        } while ($mrc == CURLM_CALL_MULTI_PERFORM);
-
-        while ($active && $mrc == CURLM_OK) {
-            if (curl_multi_select($this->mh) != -1) {
-                do {
-                    $mrc = curl_multi_exec($this->mh, $active);
-                } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+                if ($item instanceof Config) {
+                    $this->request_data[$key] = $item;
+                }
             }
         }
-        $this->result=[];
-        foreach ($this->data as $i => $item) {
-            //获取当前解析的cURL的相关传输信息
-            $this->result[$i]['multiInfo'] = curl_multi_info_read($this->mh);
-            //获取请求头信息
-            $this->result[$i]['curlInfo'] = curl_getinfo($this->conn[$i]);
-            //获取输出的文本流
-            $headerString = $headerArray = $body = [];
-            $response = curl_multi_getcontent($this->conn[$i]);
-
-            $headerSize = curl_getinfo($this->conn[$i], CURLINFO_HEADER_SIZE);
-            $headerString = substr($response, 0, $headerSize);
-            $headerArray = $this->analysisHeader($headerString);
-            $body = substr($response, $headerSize);
-
-            $this->result[$i]['headerString'] = $headerString;
-            $this->result[$i]['headerArray'] = $headerArray;
-            $this->result[$i]['body'] = $body;
-            // 移除curl批处理句柄资源中的某个句柄资源
-            curl_multi_remove_handle($this->mh, $this->conn[$i]);
-            //关闭cURL会话
-            curl_close($this->conn[$i]);
-        }
-        return $this;
     }
 
-    final private function analysisHeader($str)
+    public function writeLog(string $level, string $error_message, $context = []): bool
+    {
+        if (!$this->need_record_log) {
+            return false;
+        }
+        $condition = !is_dir(dirname($this->log_path)) &&
+            !mkdir($concurrentDirectory = dirname($this->log_path), 0777, true) &&
+            !is_dir($concurrentDirectory);
+
+        if ($condition) {
+            throw new \RuntimeException(sprintf('Directory "%s" was not created', $concurrentDirectory));
+        }
+        $msg = sprintf("%s\t%s\t%s", $level, $error_message, json_encode($context));
+        file_put_contents($this->log_path, $msg, FILE_APPEND);
+        return true;
+    }
+
+    private function analysisHeader($str): array
     {
         $tmp = explode(PHP_EOL, $str);
         $header = [];
@@ -164,91 +64,89 @@ class batchRequest
         return $header;
     }
 
-    public function __construct($option = [])
+    public function request(): array
     {
-        if (!empty($option['data'])) {
-            $this->data = $option['data'];
-        }
-        if (!empty($option['defaultMethod']) && in_array($option['defaultMethod'], $this->allowMethod())) {
-            $this->defaultMethod = $option['defaultMethod'];
-        }
-        if (!empty($option['timeout'])) {
-            $this->data = $option['timeout'];
-        }
-        if (isset($option['needRecordLog'])&&is_bool($option['needRecordLog'])) {
-            $this->needRecordLog = $option['needRecordLog'];
-        }
-
-        if (!empty($option['resultType'])) {
-            $this->resultType = $option['resultType'];
-        }
-        $this->logPath = (!empty($option['logPath'])) ? $option['logPath'] : dirname(__DIR__) . DIRECTORY_SEPARATOR . "logs/" . date("Y-m-d") . ".log";
-
-    }
-
-    public function allowMethod()
-    {
-        return ["GET", "POST", "PUT", "DELETE"];
-    }
-
-    public function setData($data = [])
-    {
-        $this->data = $data;
-        return $this;
-    }
-
-    public function getResult()
-    {
-        return $this->result;
-    }
-
-    public function __call($name, $arguments)
-    {
-        $tmp = explode('getResultBy', $name);
-        if (count($tmp) == 2) {
-            $result = [];
-            foreach ($this->result as $k => $item) {
-                $result[$k] = isset($item[lcfirst($tmp[1])]) ? $item[lcfirst($tmp[1])] : null;
+        $mh = curl_multi_init();
+        $all_curl = [];
+        foreach ($this->request_data as $key => $config) {
+            /**
+             * @var  Config $config
+             */
+            if (!$config->url) {
+                continue;
             }
-            return $result;
+            $ch = curl_init();
+            $options = [
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+                //将curl_exec()获取的信息以文件流的形式返回，而不是直接输出
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => $config->timeout,
+                //返回结果中是否包含header
+                CURLOPT_HEADER => true,
+                //设置请求header
+                CURLOPT_HTTPHEADER => $config->header,
+            ];
+            switch (strtoupper($config->method)) {
+                case "GET":
+                    $data_str = is_array($config->data) ? http_build_query($config->data) : $config->data;
+                    $url = $config->url . ($data_str === '' ? '' : '?' . $data_str);
+                    $options[CURLOPT_URL] = $url;
+                    break;
+                case "POST":
+                    $options[CURLOPT_URL] = $config->url;
+                    $options[CURLOPT_POST] = true;
+                    $options[CURLOPT_POSTFIELDS] = $config->data;
+                    break;
+                case "PUT":
+                case "DELETE":
+                    $options[CURLOPT_URL] = $config->url;
+                    $options[CURLOPT_CUSTOMREQUEST] = strtoupper($config->method);
+                    $options[CURLOPT_POSTFIELDS] = $config->data;
+                    break;
+            }
+            curl_setopt_array($ch, $options);
+            $all_curl[$key] = $ch;
+            curl_multi_add_handle($mh, $ch);
         }
+        // 执行批处理句柄
+        do {
+            $status = curl_multi_exec($mh, $active);
+            if ($active) {
+                curl_multi_select($mh);
+            }
+        } while ($active && $status === CURLM_OK);
+
+        $result = [];
+        foreach ($all_curl as $key => $curl) {
+            $result[$key] = Response::getInstance([
+                'multi_info' => curl_multi_info_read($mh),
+                'curl_info' => curl_getinfo($curl),
+                'content' => curl_multi_getcontent($curl),
+                'header_size' => curl_getinfo($curl, CURLINFO_HEADER_SIZE),
+                'code' => curl_getinfo($curl, CURLINFO_HTTP_CODE),
+                'config'=>$this->request_data[$key]
+            ]);
+            // 移除curl批处理句柄资源中的某个句柄资源
+            curl_multi_remove_handle($mh, $curl);
+            //关闭cURL会话
+            curl_close($curl);
+        }
+        curl_multi_close($mh);
+        return $result;
     }
 
-    public function get()
+    public function getResult(): array
     {
-        if (empty($this->data)) {
-            return $this;
+        $result = [];
+        $responses = $this->request();
+        foreach ($responses as $key => $response) {
+            /**
+             * @var Response $response
+             */
+            $result[$key] = $response->getResult();
         }
-        $this->mh = curl_multi_init();
-        $actionName = ($this->resultType == "result") ? 'getResult' : 'getResultBy' . ucfirst($this->resultType);
-        $this->writeLog($this->data,"START");
-        $this->createConn();
-        $this->execHandle();
-        curl_multi_close($this->mh);
-        $this->writeLog($this->getResultByBody(),'END');
-        return $this->$actionName();
+        return $result;
     }
 
-
-    public function getLogPath()
-    {
-        return $this->logPath;
-    }
-
-    private function writeLog($msg,$action="default")
-    {
-        if (!$this->needRecordLog) {
-            return false;
-        }
-        if (!is_dir(dirname($this->logPath))) {
-            mkdir(dirname($this->logPath), 0777, true);
-        }
-        if ($msg) {
-            if (!$msgS = json_encode($msg, JSON_UNESCAPED_UNICODE)) {
-                $msgS = "json解析错误，code:" . json_last_error() . "msg:" . json_last_error_msg();
-            };
-            $msg = "[" . date("Y-m-d H:i:s") . "] :[{$action}]: $msgS" . PHP_EOL;
-            file_put_contents($this->logPath, $msg, FILE_APPEND);
-        }
-    }
 }
