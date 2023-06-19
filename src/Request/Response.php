@@ -1,6 +1,6 @@
 <?php
 
-namespace Bjm\batchRequest;
+namespace Bjm\Request;
 
 use ReflectionProperty;
 
@@ -51,7 +51,7 @@ class Response
             if (empty($item)) {
                 continue;
             }
-            if (strstr($item, ':') !== false) {
+            if (strpos($item, ':') !== false) {
                 list($key, $value) = explode(': ', $item);
                 $header[$key] = str_replace(["\n", "\r"], ['', ''], $value);
             }

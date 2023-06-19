@@ -1,8 +1,8 @@
 <?php
 
-namespace Bjm\batchRequest;
+namespace Bjm\Request;
 
-class batchRequest
+class BatchHttp
 {
     public $request_data = [];
 
@@ -48,23 +48,7 @@ class batchRequest
         return true;
     }
 
-    private function analysisHeader($str): array
-    {
-        $tmp = explode(PHP_EOL, $str);
-        $header = [];
-        foreach ($tmp as $item) {
-            if (empty($item)) {
-                continue;
-            }
-            if (strstr($item, ':') !== false) {
-                list($key, $value) = explode(': ', $item);
-                $header[$key] = str_replace(["\n", "\r"], ['', ''], $value);
-            }
-        }
-        return $header;
-    }
-
-    public function request(): array
+    public function send(): array
     {
         $mh = curl_multi_init();
         $all_curl = [];
@@ -76,36 +60,7 @@ class batchRequest
                 continue;
             }
             $ch = curl_init();
-            $options = [
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false,
-                //将curl_exec()获取的信息以文件流的形式返回，而不是直接输出
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => $config->timeout,
-                //返回结果中是否包含header
-                CURLOPT_HEADER => true,
-                //设置请求header
-                CURLOPT_HTTPHEADER => $config->header,
-            ];
-            switch (strtoupper($config->method)) {
-                case "GET":
-                    $data_str = is_array($config->data) ? http_build_query($config->data) : $config->data;
-                    $url = $config->url . ($data_str === '' ? '' : '?' . $data_str);
-                    $options[CURLOPT_URL] = $url;
-                    break;
-                case "POST":
-                    $options[CURLOPT_URL] = $config->url;
-                    $options[CURLOPT_POST] = true;
-                    $options[CURLOPT_POSTFIELDS] = $config->data;
-                    break;
-                case "PUT":
-                case "DELETE":
-                    $options[CURLOPT_URL] = $config->url;
-                    $options[CURLOPT_CUSTOMREQUEST] = strtoupper($config->method);
-                    $options[CURLOPT_POSTFIELDS] = $config->data;
-                    break;
-            }
-            curl_setopt_array($ch, $options);
+            curl_setopt_array($ch, $config->custom_curl_option);
             $all_curl[$key] = $ch;
             curl_multi_add_handle($mh, $ch);
         }
@@ -139,7 +94,7 @@ class batchRequest
     public function getResult(): array
     {
         $result = [];
-        $responses = $this->request();
+        $responses = $this->send();
         foreach ($responses as $key => $response) {
             /**
              * @var Response $response

@@ -9,10 +9,13 @@
             "email": "benjamin01@foxmail.com"
         }
     ],
-    "require": {},
+    "require": {
+      "ext-curl": "*",
+        "ext-json": "*"
+    },
     "autoload": {
         "psr-4": {
-            "Bjm\\batchRequest\\": "src/"
+            "Bjm\\": "src/"
         }
     }
 }
